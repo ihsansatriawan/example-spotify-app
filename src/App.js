@@ -13,28 +13,27 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [currentTrack, setCurrentTrack] = useState(null);
 
-  function handleLogin() {
+  async function handleLogin() {
     const codeVerifier = generateRandomString(64);
-    generateCodeChallenge(codeVerifier).then(codeChallenge => {
-      const pkceState = generateRandomString(16);
+    const codeChallenge = await generateCodeChallenge(codeVerifier)
+    const pkceState = generateRandomString(16);
 
 
-      // Store code verifier in session storage
-      sessionStorage.setItem("codeVerifier", codeVerifier);
-      sessionStorage.setItem("pkceState", pkceState);
+    // Store code verifier in session storage
+    sessionStorage.setItem("codeVerifier", codeVerifier);
+    sessionStorage.setItem("pkceState", pkceState);
 
-      const queryParams = new URLSearchParams({
-        client_id,
-        response_type: "code",
-        redirect_uri,
-        code_challenge_method: "S256",
-        code_challenge: codeChallenge,
-        state: pkceState,
-        scope: scopes.join(" "),
-      });
+    const queryParams = new URLSearchParams({
+      client_id,
+      response_type: "code",
+      redirect_uri,
+      code_challenge_method: "S256",
+      code_challenge: codeChallenge,
+      state: pkceState,
+      scope: scopes.join(" "),
+    });
 
-      window.location = `${authEndpoint}?${queryParams}`;
-    })
+    window.location = `${authEndpoint}?${queryParams}`;
   }
 
 
