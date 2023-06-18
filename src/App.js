@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
+import { generateRandomString, sha256, generateCodeChallenge } from "./utils";
 
 const client_id = process.env.REACT_APP_SPOTIFY_CLIENT_ID;
 const redirect_uri = "http://localhost:3000";
+const authEndpoint = "https://accounts.spotify.com/authorize";
+const tokenEndpoint = "https://accounts.spotify.com/api/token";
 const scopes = ["user-read-private", "user-read-email", "user-modify-playback-state"];
 
 function App() {
@@ -11,15 +14,29 @@ function App() {
   const [currentTrack, setCurrentTrack] = useState(null);
 
   function handleLogin() {
-    const authEndpoint = "https://accounts.spotify.com/authorize";
-    const queryParams = new URLSearchParams({
-      client_id,
-      response_type: "token",
-      redirect_uri,
-      scope: scopes.join(" "),
-    });
-    window.location = `${authEndpoint}?${queryParams}`;
+    const codeVerifier = generateRandomString(64);
+    generateCodeChallenge(codeVerifier).then(codeChallenge => {
+      const pkceState = generateRandomString(16);
+
+
+      // Store code verifier in session storage
+      sessionStorage.setItem("codeVerifier", codeVerifier);
+      sessionStorage.setItem("pkceState", pkceState);
+
+      const queryParams = new URLSearchParams({
+        client_id,
+        response_type: "code",
+        redirect_uri,
+        code_challenge_method: "S256",
+        code_challenge: codeChallenge,
+        state: pkceState,
+        scope: scopes.join(" "),
+      });
+
+      window.location = `${authEndpoint}?${queryParams}`;
+    })
   }
+
 
   function handleSearch(e) {
     e.preventDefault();
@@ -62,16 +79,55 @@ function App() {
   }
 
   useEffect(() => {
-    function extractAccessToken() {
-      const hashParams = new URLSearchParams(window.location.hash.substr(1));
-      const token = hashParams.get("access_token");
-      setAccessToken(token);
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get("code");
+    const state = urlParams.get("state");
+
+    if (code && state) {
+      // Exchange authorization code for access token
+      exchangeCodeForToken(code, state);
+    }
+  }, []);
+
+  async function exchangeCodeForToken(code, state) {
+    const storedCodeVerifier = sessionStorage.getItem("codeVerifier");
+    console.log("storedCodeVerifier: ", storedCodeVerifier)
+    console.log("pkceState: ", sessionStorage.getItem("pkceState"))
+    console.log("code: ", code)
+    console.log("state: ", state)
+    if (!storedCodeVerifier || state !== sessionStorage.getItem("pkceState")) {
+      console.error("Invalid code verifier or state");
+      return;
     }
 
-    if (!accessToken) {
-      extractAccessToken();
+    const requestBody = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri,
+      client_id,
+      code_verifier: storedCodeVerifier,
+    });
+
+    try {
+      const response = await fetch(tokenEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: requestBody,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const { access_token } = data;
+        setAccessToken(access_token);
+      } else {
+        console.error("Token exchange request failed");
+      }
+    } catch (error) {
+      console.error("Error exchanging code for token", error);
     }
-  }, [accessToken]);
+  }
 
   return (
     <div>
